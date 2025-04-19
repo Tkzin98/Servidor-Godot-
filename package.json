@@ -1,5 +1,5 @@
 {
-  "name": "servidor-godot",
+  "name": "servidor-websocket",
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
