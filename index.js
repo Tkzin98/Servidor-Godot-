@@ -1,12 +1,12 @@
 const WebSocket = require("ws");
 
-const PORT = process.env.PORT || 8080;
+const PORT = process.env.PORT || 10000;
 const server = new WebSocket.Server({ port: PORT });
 
 let clients = [];
 
 server.on("connection", socket => {
-    console.log("Novo cliente conectado");
+    console.log("Cliente conectado");
     clients.push(socket);
 
     socket.on("message", msg => {
@@ -20,6 +20,6 @@ server.on("connection", socket => {
 
     socket.on("close", () => {
         clients = clients.filter(c => c !== socket);
-        console.log("Cliente saiu");
+        console.log("Cliente desconectado");
     });
 });
