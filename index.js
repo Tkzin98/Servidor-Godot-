@@ -1,21 +1,25 @@
-const express = require('express');
+// server.js
 const WebSocket = require('ws');
-const app = express();
-const port = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8080;
+const wss = new WebSocket.Server({ port: PORT });
 
-const server = app.listen(port, () => {
-  console.log(`Servidor rodando na porta ${port}`);
-});
-
-const wss = new WebSocket.Server({ server });
+console.log("Servidor WebSocket iniciado na porta", PORT);
 
 wss.on('connection', (ws) => {
-  ws.on('message', (msg) => {
-    console.log('Mensagem recebida:', msg);
-    wss.clients.forEach(client => {
-      if (client.readyState === WebSocket.OPEN) {
-        client.send(msg.toString());
+  console.log("Novo cliente conectado.");
+
+  ws.on('message', (message) => {
+    console.log("Mensagem recebida:", message.toString());
+
+    // Reenvia a mensagem para todos os clientes, exceto o remetente
+    wss.clients.forEach((client) => {
+      if (client !== ws && client.readyState === WebSocket.OPEN) {
+        client.send(message);
       }
     });
+  });
+
+  ws.on('close', () => {
+    console.log("Cliente desconectado.");
   });
 });
