@@ -1,18 +1,13 @@
 {
   "name": "godot-multiplayer-server",
   "version": "1.0.0",
-  "description": "Servidor multiplayer para Godot 4.4",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js",
-    "dev": "nodemon index.js"
+    "start": "node index.js"
   },
   "dependencies": {
     "express": "^4.18.2",
     "ws": "^8.13.0"
-  },
-  "devDependencies": {
-    "nodemon": "^3.0.2"
   },
   "engines": {
     "node": ">=16.0.0"
