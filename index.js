@@ -1,25 +1,24 @@
-// server.js
+const express = require('express');
 const WebSocket = require('ws');
-const PORT = process.env.PORT || 8080;
-const wss = new WebSocket.Server({ port: PORT });
+const { v4: uuidv4 } = require('uuid');
 
-console.log("Servidor WebSocket iniciado na porta", PORT);
+const app = express();
+const port = process.env.PORT || 3000;
+const server = app.listen(port, () => {
+  console.log(`Servidor rodando na porta ${port}`);
+});
+
+const wss = new WebSocket.Server({ server });
 
 wss.on('connection', (ws) => {
-  console.log("Novo cliente conectado.");
+  ws.id = uuidv4(); // ID único pra cada jogador
 
-  ws.on('message', (message) => {
-    console.log("Mensagem recebida:", message.toString());
-
-    // Reenvia a mensagem para todos os clientes, exceto o remetente
-    wss.clients.forEach((client) => {
+  ws.on('message', (msg) => {
+    // Reenvia para todos (menos ele)
+    wss.clients.forEach(client => {
       if (client !== ws && client.readyState === WebSocket.OPEN) {
-        client.send(message);
+        client.send(msg.toString());
       }
     });
-  });
-
-  ws.on('close', () => {
-    console.log("Cliente desconectado.");
   });
 });
