@@ -1,88 +1,101 @@
-const WebSocket = require('ws');
-const express = require('express');
-const path = require('path');
+import { WebSocketServer } from 'ws';
+import express from 'express';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
+// Configuração inicial
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = process.env.PORT || 10000;
 
-// Configuração de spawn points
-const SPAWN_POINTS = [
-    { x: 0, y: 0, z: 0, rotation: 0 },
-    { x: 5, y: 0, z: 5, rotation: 1.57 },
-    { x: -5, y: 0, z: -5, rotation: 3.14 }
-];
-
-// Middleware e health check
+// Middlewares
 app.use(express.static(path.join(__dirname, 'public')));
-app.get('/health', (req, res) => res.status(200).send('OK'));
+app.use(express.json());
 
+// Health Check (obrigatório para Render.com)
+app.get('/health', (req, res) => res.status(200).json({ status: 'healthy' }));
+
+// Inicia servidor HTTP
 const server = app.listen(PORT, () => {
-    console.log(`Servidor rodando na porta ${PORT}`);
+    console.log(`🚀 Servidor rodando na porta ${PORT}`);
 });
 
-const wss = new WebSocket.Server({ server });
-const players = {};
+// Configuração do WebSocket
+const wss = new WebSocketServer({ server });
+const players = new Map();
 
-// Heartbeat para manter conexões ativas
-setInterval(() => {
-    wss.clients.forEach(ws => {
-        if (!ws.isAlive) return ws.terminate();
+// Heartbeat (evita timeout)
+const heartbeatInterval = setInterval(() => {
+    wss.clients.forEach((ws) => {
+        if (!ws.isAlive) {
+            console.log(`💀 Desconectando jogador inativo: ${ws.playerId}`);
+            players.delete(ws.playerId);
+            return ws.terminate();
+        }
         ws.isAlive = false;
         ws.ping();
     });
-}, 30000);
+}, 30000); // 30 segundos
 
+// Eventos do WebSocket
 wss.on('connection', (ws) => {
     const playerId = generateId();
-    const spawn = getRandomSpawn();
-    
-    players[playerId] = {
-        position: spawn,
-        rotation: spawn.rotation,
-        lastUpdate: Date.now()
-    };
-    
+    ws.playerId = playerId;
     ws.isAlive = true;
-    ws.on('pong', () => ws.isAlive = true);
-    
+
+    // Configura spawn inicial
+    const spawnPoint = getRandomSpawn();
+    players.set(playerId, {
+        position: spawnPoint,
+        rotation: spawnPoint.rotation
+    });
+
+    console.log(`🎮 Novo jogador conectado: ${playerId}`);
+
+    // Envia dados iniciais
     ws.send(JSON.stringify({
         type: 'init',
         playerId,
-        spawn,
-        players: getAllPlayers()
+        spawn: spawnPoint,
+        players: Object.fromEntries(players)
     }));
-    
+
+    // Notifica outros jogadores
     broadcast({
         type: 'player_connected',
         playerId,
-        position: spawn,
-        rotation: spawn.rotation
+        ...spawnPoint
     }, ws);
+
+    // Event listeners
+    ws.on('pong', () => ws.isAlive = true);
     
-    ws.on('message', (message) => {
+    ws.on('message', (data) => {
         try {
-            const data = JSON.parse(message);
-            if (data.type === 'player_update') {
-                players[playerId] = {
-                    position: data.position,
-                    rotation: data.rotation,
-                    lastUpdate: Date.now()
-                };
+            const message = JSON.parse(data);
+            if (message.type === 'player_update') {
+                players.set(playerId, {
+                    position: message.position,
+                    rotation: message.rotation
+                });
                 broadcast({
                     type: 'player_update',
                     playerId,
-                    position: data.position,
-                    rotation: data.rotation
+                    ...message
                 }, ws);
             }
-        } catch (e) {
-            console.error('Erro ao processar mensagem:', e);
+        } catch (error) {
+            console.error('❌ Erro ao processar mensagem:', error);
         }
     });
-    
+
     ws.on('close', () => {
-        delete players[playerId];
-        broadcast({ type: 'player_disconnected', playerId });
+        players.delete(playerId);
+        broadcast({
+            type: 'player_disconnected',
+            playerId
+        });
+        console.log(`🚪 Jogador desconectado: ${playerId}`);
     });
 });
 
@@ -92,21 +105,26 @@ function generateId() {
 }
 
 function getRandomSpawn() {
-    return SPAWN_POINTS[Math.floor(Math.random() * SPAWN_POINTS.length)];
-}
-
-function getAllPlayers() {
-    return Object.fromEntries(
-        Object.entries(players).map(([id, player]) => [id, {
-            position: player.position,
-            rotation: player.rotation
-        }])
+    const spawnPoints = [
+        { x: 0, y: 0, z: 0, rotation: 0 },
+        { x: 5, y: 0, z: 5, rotation: Math.PI / 2 },
+        { x: -5, y: 0, z: -5, rotation: Math.PI }
+    ];
+    return spawnPoints[Math.floor(Math.random() * spawnPoints.length)];
 }
 
 function broadcast(data, exclude = null) {
-    wss.clients.forEach(client => {
+    const message = JSON.stringify(data);
+    wss.clients.forEach((client) => {
         if (client !== exclude && client.readyState === WebSocket.OPEN) {
-            client.send(JSON.stringify(data));
+            client.send(message);
         }
     });
 }
+
+// Encerramento limpo
+process.on('SIGTERM', () => {
+    clearInterval(heartbeatInterval);
+    wss.close();
+    server.close();
+});
